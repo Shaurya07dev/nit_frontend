@@ -10,7 +10,7 @@ import {
   createColumnHelper,
 } from "@tanstack/react-table";
 import { Asset } from "@/types";
-import { editAsset } from "@/lib/api";
+import { editAsset, createAsset, deleteAsset } from "@/lib/api";
 import * as XLSX from "xlsx";
 import {
   MagnifyingGlassIcon,
@@ -30,6 +30,23 @@ export default function AssetsTable({ assets, onAssetUpdate }: AssetsTableProps)
   const [globalFilter, setGlobalFilter] = useState("");
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newAsset, setNewAsset] = useState({
+    year_of_purchase: "",
+    item_name: "",
+    quantity: "",
+    inventory_number: "",
+    room_number: "",
+    floor_number: "",
+    building_block: "",
+    remarks: "",
+    department_origin: "own"
+  });
+  const [columnFilters, setColumnFilters] = useState({});
+  const [sortBy, setSortBy] = useState({ column: "", order: "asc" });
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
 
   const columns = useMemo(
     () => [
@@ -85,12 +102,22 @@ export default function AssetsTable({ assets, onAssetUpdate }: AssetsTableProps)
         id: "actions",
         header: "Actions",
         cell: (info) => (
-          <button
-            onClick={() => setEditingAsset(info.row.original)}
-            className="text-blue-600 hover:text-blue-900"
-          >
-            <PencilIcon className="h-4 w-4" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setEditingAsset(info.row.original)}
+              className="text-blue-600 hover:text-blue-900"
+            >
+              <PencilIcon className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleDeleteAsset(info.row.original.id)}
+              className="text-red-600 hover:text-red-900"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9 0a3 3 0 11-6 0 3 3 0 016 0zm-12 0a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </div>
         ),
       }),
     ],
@@ -105,8 +132,17 @@ export default function AssetsTable({ assets, onAssetUpdate }: AssetsTableProps)
     getSortedRowModel: getSortedRowModel(),
     state: {
       globalFilter,
+      columnFilters,
+      sorting: sortBy,
+      pagination: {
+        pageIndex: page,
+        pageSize: pageSize,
+      },
     },
     onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: setColumnFilters,
+    onSortingChange: setSortBy,
+    onPaginationChange: setPage,
   });
 
   const handleEditAsset = async (updatedData: Partial<Asset>) => {
@@ -121,6 +157,45 @@ export default function AssetsTable({ assets, onAssetUpdate }: AssetsTableProps)
       console.error("Error updating asset:", error);
     } finally {
       setIsEditing(false);
+    }
+  };
+
+  const handleAddAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreating(true);
+    try {
+      await createAsset({
+        ...newAsset,
+        year_of_purchase: Number(newAsset.year_of_purchase),
+        quantity: Number(newAsset.quantity)
+      });
+      setAddModalOpen(false);
+      setNewAsset({
+        year_of_purchase: "",
+        item_name: "",
+        quantity: "",
+        inventory_number: "",
+        room_number: "",
+        floor_number: "",
+        building_block: "",
+        remarks: "",
+        department_origin: "own"
+      });
+      onAssetUpdate();
+    } catch (err) {
+      alert("Failed to add asset");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleDeleteAsset = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this asset?")) return;
+    try {
+      await deleteAsset(id);
+      onAssetUpdate();
+    } catch (err) {
+      alert("Failed to delete asset");
     }
   };
 
@@ -215,6 +290,18 @@ export default function AssetsTable({ assets, onAssetUpdate }: AssetsTableProps)
           isLoading={isEditing}
         />
       )}
+
+      {/* Add Asset Modal */}
+      {addModalOpen && (
+        <AddAssetModal
+          isOpen={addModalOpen}
+          onClose={() => setAddModalOpen(false)}
+          onSave={handleAddAsset}
+          isLoading={isCreating}
+          newAsset={newAsset}
+          setNewAsset={setNewAsset}
+        />
+      )}
     </div>
   );
 }
@@ -291,6 +378,171 @@ function EditAssetModal({ asset, onClose, onSave, isLoading }: EditAssetModalPro
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
                 {isLoading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+} 
+
+interface AddAssetModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (e: React.FormEvent) => Promise<void>;
+  isLoading: boolean;
+  newAsset: Asset;
+  setNewAsset: React.Dispatch<React.SetStateAction<Asset>>;
+}
+
+function AddAssetModal({ isOpen, onClose, onSave, isLoading, newAsset, setNewAsset }: AddAssetModalProps) {
+  if (!isOpen) return null;
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setNewAsset(prev => ({ ...prev, [name]: value }));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div className="mt-3">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">
+            Add New Asset
+          </h3>
+          
+          <form onSubmit={onSave} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Item Name
+              </label>
+              <input
+                type="text"
+                name="item_name"
+                value={newAsset.item_name}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Quantity
+              </label>
+              <input
+                type="number"
+                name="quantity"
+                value={newAsset.quantity}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+                required
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Inventory Number
+              </label>
+              <input
+                type="text"
+                name="inventory_number"
+                value={newAsset.inventory_number}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Room Number
+              </label>
+              <input
+                type="text"
+                name="room_number"
+                value={newAsset.room_number}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Floor Number
+              </label>
+              <input
+                type="text"
+                name="floor_number"
+                value={newAsset.floor_number}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Building Block
+              </label>
+              <input
+                type="text"
+                name="building_block"
+                value={newAsset.building_block}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Year of Purchase
+              </label>
+              <input
+                type="number"
+                name="year_of_purchase"
+                value={newAsset.year_of_purchase}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Department Origin
+              </label>
+              <select
+                name="department_origin"
+                value={newAsset.department_origin}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+              >
+                <option value="own">Own</option>
+                <option value="donated">Donated</option>
+                <option value="purchased">Purchased</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Remarks
+              </label>
+              <textarea
+                name="remarks"
+                value={newAsset.remarks}
+                onChange={handleChange}
+                rows={3}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-gray-800 text-white"
+              />
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                {isLoading ? "Adding..." : "Add Asset"}
               </button>
             </div>
           </form>

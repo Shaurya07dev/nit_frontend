@@ -97,13 +97,31 @@ const mockEditAsset = async (id: number, updatedData: any) => {
 };
 
 // Assets API
-export async function fetchAssets() {
+export async function fetchAssets(params = {}) {
   try {
-    const res = await api.get("/assets");
+    const res = await api.get("/assets", { params });
     return res.data;
   } catch (error) {
     console.log("Using mock assets data for testing...");
     return await mockFetchAssets();
+  }
+}
+
+export async function createAsset(assetData: any) {
+  try {
+    const res = await api.post("/assets", assetData);
+    return res.data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function deleteAsset(id: number) {
+  try {
+    const res = await api.delete(`/assets/${id}`);
+    return res.data;
+  } catch (error) {
+    throw error;
   }
 }
 

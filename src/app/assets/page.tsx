@@ -11,11 +11,12 @@ export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [tableParams, setTableParams] = useState({});
 
-  const loadAssets = async () => {
+  const loadAssets = async (params = {}) => {
     try {
       setIsLoading(true);
-      const data = await fetchAssets();
+      const data = await fetchAssets(params);
       setAssets(data);
       setError("");
     } catch (error) {
@@ -27,8 +28,8 @@ export default function AssetsPage() {
   };
 
   useEffect(() => {
-    loadAssets();
-  }, []);
+    loadAssets(tableParams);
+  }, [tableParams]);
 
   return (
     <ProtectedRoute>
@@ -62,7 +63,7 @@ export default function AssetsPage() {
                   </div>
                   <div className="mt-4">
                     <button
-                      onClick={loadAssets}
+                      onClick={() => loadAssets(tableParams)}
                       className="bg-red-100 text-red-800 px-4 py-2 rounded-md text-sm font-medium hover:bg-red-200"
                     >
                       Try Again
@@ -72,7 +73,12 @@ export default function AssetsPage() {
               </div>
             </div>
           ) : (
-            <AssetsTable assets={assets} onAssetUpdate={loadAssets} />
+            <AssetsTable
+              assets={assets}
+              onAssetUpdate={() => loadAssets(tableParams)}
+              setTableParams={setTableParams}
+              tableParams={tableParams}
+            />
           )}
         </div>
       </Layout>
